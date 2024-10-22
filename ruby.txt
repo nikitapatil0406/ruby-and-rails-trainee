@@ -1,0 +1,116 @@
+gem 'devise'           # Authentication
+gem 'cancancan'        # Authorization (role-based access)
+gem 'bootstrap', '~> 5.0' # For styling
+gem 'pg'               # PostgreSQL for the database
+bundle install
+rails generate devise:install
+rails generate devise User
+rails db:create
+rails db:migrate
+rails generate migration AddRoleToUsers role:integer
+class AddRoleToUsers < ActiveRecord::Migration[7.0]
+  def change
+    add_column :users, :role, :integer, default: 0  # 0: normal_user, 1: store_owner, 2: system_admin
+  end
+end
+class User < ApplicationRecord
+  # Devise modules for authentication
+  devise :database_authenticatable, :registerable, :recoverable, :rememberable, :validatable
+  
+  # Enum for user roles
+  enum role: { normal_user: 0, store_owner: 1, system_admin: 2 }
+  
+  has_many :ratings
+  has_many :stores, foreign_key: :owner_id, class_name: 'Store'
+  
+  validates :name, presence: true, length: { in: 20..60 }
+  validates :address, presence: true, length: { maximum: 400 }
+end
+rails generate model Store name:string email:string address:string rating:float owner:references
+rails generate model Rating value:integer user:references store:references
+class CreateStores < ActiveRecord::Migration[7.0]
+  def change
+    create_table :stores do |t|
+      t.string :name, null: false
+      t.string :email, null: false
+      t.string :address, null: false
+      t.float :rating, default: 0.0
+      t.references :owner, foreign_key: { to_table: :users }
+
+      t.timestamps
+    end
+  end
+end
+class Store < ApplicationRecord
+  belongs_to :owner, class_name: 'User'
+  has_many :ratings
+
+  validates :name, presence: true
+  validates :email, presence: true, format: { with: URI::MailTo::EMAIL_REGEXP }
+  validates :address, presence: true, length: { maximum: 400 }
+
+  def average_rating
+    ratings.average(:value).to_f
+  end
+end
+class Rating < ApplicationRecord
+  belongs_to :user
+  belongs_to :store
+
+  validates :value, inclusion: { in: 1..5 }
+end
+rails db:migrate
+class UsersController < ApplicationController
+  before_action :authenticate_user!
+  before_action :admin_only, only: [:index, :destroy]
+  
+  def index
+    @users = User.all
+  end
+  
+  def show
+    @user = User.find(params[:id])
+  end
+
+  private
+  
+  def admin_only
+    redirect_to(root_path) unless current_user.system_admin?
+  end
+end
+class StoresController < ApplicationController
+  before_action :authenticate_user!
+  
+  def index
+    @stores = Store.all
+  end
+  
+  def show
+    @store = Store.find(params[:id])
+  end
+  
+  def rate
+    @store = Store.find(params[:id])
+    @rating = current_user.ratings.find_or_initialize_by(store: @store)
+    @rating.update(value: params[:value])
+    
+    redirect_to store_path(@store)
+  end
+end
+class AdminController < ApplicationController
+  before_action :authenticate_user!
+  before_action :admin_only
+
+  def dashboard
+    @total_users = User.count
+    @total_stores = Store.count
+    @total_ratings = Rating.count
+  end
+
+  private
+  
+  def admin_only
+    redirect_to(root_path) unless current_user.system_admin?
+  end
+end
+

@@ -1,0 +1,58 @@
+<h1>Admin Dashboard</h1>
+<p>Total Users: <%= @total_users %></p>
+<p>Total Stores: <%= @total_stores %></p>
+<p>Total Ratings: <%= @total_ratings %></p>
+<h1>Stores</h1>
+
+<table class="table">
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Address</th>
+      <th>Rating</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    <% @stores.each do |store| %>
+      <tr>
+        <td><%= store.name %></td>
+        <td><%= store.address %></td>
+        <td><%= store.average_rating %></td>
+        <td>
+          <% if current_user.normal_user? %>
+            <%= link_to 'Rate', rate_store_path(store), method: :post %>
+          <% end %>
+        </td>
+      </tr>
+    <% end %>
+  </tbody>
+</table>
+<h1>Rate <%= @store.name %></h1>
+
+<%= form_with url: rate_store_path(@store), method: :post do %>
+  <div class="form-group">
+    <%= label_tag :value, 'Rating (1-5)' %>
+    <%= number_field_tag :value, @rating&.value, in: 1..5 %>
+  </div>
+
+  <div class="form-group">
+    <%= submit_tag 'Submit Rating', class: 'btn btn-primary' %>
+  </div>
+<% end %>
+Rails.application.routes.draw do
+  devise_for :users
+
+  root to: 'stores#index'
+  
+  resources :stores do
+    post 'rate', on: :member
+  end
+
+  resources :users, only: [:index, :show]
+
+  namespace :admin do
+    get 'dashboard', to: 'admin#dashboard'
+  end
+end
+rails server
